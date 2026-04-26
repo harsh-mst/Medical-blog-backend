@@ -26,7 +26,11 @@ try {
 const app = express();
 app.set('trust proxy', 1);
 
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
 // app.use(
 //   cors({
 //     origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
@@ -38,9 +42,13 @@ app.use(helmet());
 
 app.use(
   cors({
-    origin: '*',
+    origin: (origin, callback) => {
+      // Allow all origins in development and production for now
+      // This allows credentials to work by mirroring the origin header
+      callback(null, true);
+    },
     methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'X-Request-ID'],
+    allowedHeaders: ['Content-Type', 'X-Request-ID', 'Authorization'],
     exposedHeaders: ['X-Request-ID'],
     credentials: true,
   })
