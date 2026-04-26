@@ -14,6 +14,9 @@ export const config = {
     apiKey: process.env.GROQ_API_KEY || '',
     model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
   },
+  mongodb: {
+    uri: process.env.MONGODB_URI || '',
+  },
   rateLimit: {
     windowMs: 15 * 60 * 1000,
     max: parseInt(process.env.RATE_LIMIT_MAX || '50', 10),
@@ -27,5 +30,8 @@ export const config = {
 export function validateConfig(): void {
   if (!config.googleAI.apiKey) {
     throw new Error('GOOGLE_AI_API_KEY is required. Set it in your .env file.');
+  }
+  if (!config.mongodb.uri) {
+    throw new Error('MONGODB_URI is required. Set it in your .env file.');
   }
 }

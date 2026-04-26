@@ -7,9 +7,12 @@ import { config, validateConfig } from './config';
 import { logger } from './logger';
 import { requestIdMiddleware, requestLogger, notFoundHandler, errorHandler } from './middleware';
 import router from './blogRouter';
+import { connectDB, disconnectDB } from './db';
 
-if (!fs.existsSync('logs')) {
-  fs.mkdirSync('logs', { recursive: true });
+if (process.env.NODE_ENV !== 'production') {
+  if (!fs.existsSync('logs')) {
+    fs.mkdirSync('logs', { recursive: true });
+  }
 }
 
 try {
@@ -21,6 +24,7 @@ try {
 }
 
 const app = express();
+app.set('trust proxy', 1);
 
 app.use(helmet());
 // app.use(
@@ -34,10 +38,8 @@ app.use(helmet());
 
 app.use(
   cors({
-    origin: process.env.ALLOWED_ORIGINS
-      ? process.env.ALLOWED_ORIGINS.split(',')
-      : ['http://localhost:5173', 'http://127.0.0.1:5173'],
-    methods: ['GET', 'POST', 'OPTIONS'],
+    origin: '*',
+    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'X-Request-ID'],
     exposedHeaders: ['X-Request-ID'],
     credentials: true,
@@ -64,23 +66,40 @@ app.use('/', router);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-const server = app.listen(config.port, () => {
-  logger.info(`${config.app.name} is running`, {
-    port: config.port,
-    env: config.nodeEnv,
-    model: config.googleAI.model,
+// ── Connect to MongoDB then start HTTP server ─────────────────────────────────
+let server: ReturnType<typeof app.listen>;
+
+connectDB()
+  .then(() => {
+    server = app.listen(config.port, () => {
+      logger.info(`${config.app.name} is running`, {
+        port: config.port,
+        env: config.nodeEnv,
+        model: config.googleAI.model,
+      });
+      logger.info(`Health:   GET  http://localhost:${config.port}/health`);
+      logger.info(`Options:  GET  http://localhost:${config.port}/api/options`);
+      logger.info(`Generate: POST http://localhost:${config.port}/api/blogs/generate`);
+    });
+  })
+  .catch((err) => {
+    logger.error('Could not connect to MongoDB — aborting startup', {
+      error: (err as Error).message,
+    });
+    process.exit(1);
   });
-  logger.info(`Health:   GET  http://localhost:${config.port}/health`);
-  logger.info(`Options:  GET  http://localhost:${config.port}/api/options`);
-  logger.info(`Generate: POST http://localhost:${config.port}/api/blogs/generate`);
-});
 
 function gracefulShutdown(signal: string): void {
   logger.info(`${signal} received — starting graceful shutdown`);
-  server.close(() => {
-    logger.info('All connections closed. Exiting cleanly.');
+  if (server) {
+    server.close(async () => {
+      await disconnectDB();
+      logger.info('All connections closed. Exiting cleanly.');
+      process.exit(0);
+    });
+  } else {
     process.exit(0);
-  });
+  }
   setTimeout(() => {
     logger.error('Shutdown timed out — forcing exit');
     process.exit(1);
